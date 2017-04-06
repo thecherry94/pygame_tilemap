@@ -1,6 +1,10 @@
 import os
 import sys
 import pygame as pg 
+from camera import Camera
+from player import Player
+import astar
+
 from pygame.locals import *
 
 class Event:
@@ -21,6 +25,7 @@ class Event:
 
 TT_EMPTY = 0
 
+
 class Tile:
 
 	def __init__(self, pos, layer, img_id, is_destructible, is_obstacle, tile_type, hp):
@@ -32,6 +37,8 @@ class Tile:
 		self.tile_type = tile_type
 		self.hp = 100
 		self.is_obstacle = is_obstacle
+
+		self.passability = 3
 
 		# Events
 		# sig_destryoed params: self
@@ -52,13 +59,13 @@ class Tile:
 
 class Tilemap:
 
-	def __init__(self, num_tiles_x, num_tiles_y, tilesize, img):
+	def __init__(self, num_tiles_x, num_tiles_y, tilesize, img, cam):
 		self.num_tiles_x = num_tiles_x
 		self.num_tiles_y = num_tiles_y
 		self.tilesize = tilesize
 		self.img = img
 
-		self.render_offset = (0, 0)
+		self.camera = cam
 
 		''' 
 		' Creates a 3D list of tiles 
@@ -68,8 +75,10 @@ class Tilemap:
 		' On initialization the list is empty
 		'''	
 		self.map = [[[Tile.empty((x, y), 24)] for x in range(num_tiles_x)] for y in range(num_tiles_y)]
-		self.map[30][30] = [Tile.empty((30, 30), 23)]
 
+
+		#debug
+		self.calls = 0
 
 	def add_tile(self, pos, tile):
 		"""
@@ -109,7 +118,7 @@ class Tilemap:
 		Renders all tiles in a block giving by (x, y) onto the designated surface
 		'''
 		x, y = pos
-		x_off, y_off = self.render_offset
+		x_off, y_off = self.camera.get_pos()
 
 		if x < 0 or x >= self.num_tiles_x or y < 0 or y >= self.num_tiles_y:
 			return
@@ -127,16 +136,31 @@ class Tilemap:
 		'''
 
 		# Only render stuff that is visible on the screen
-		x_off, y_off = tuple([self.tilesize * n for n in self.render_offset])
+		x_off, y_off = tuple([self.tilesize * n for n in self.camera.get_pos()])
 		x_start = int(x_off / self.tilesize)
 		y_start = int(y_off / self.tilesize)
 		w, h = pg.display.get_surface().get_size()
 		x_end = x_start + int(w / self.tilesize)
 		y_end = y_start + int(h / self.tilesize)
 
+		if x_start < 0:
+			x_start = 0
+
+		if y_start < 0:
+			y_start = 0
+
+		if x_end >= self.num_tiles_x:
+			x_end = self.num_tiles_x - 1
+
+		if y_end >= self.num_tiles_y:
+			y_end = self.num_tiles_y - 1
+
+		self.calls = (y_end+1 - y_start) * (x_end+1 - x_start)
+
 		for y in range(y_start, y_end+1, 1):
 			for x in range(x_start, x_end+1, 1):
 				self.render_block((x, y), surf)
+				
 
 
 	def tile_id_to_img_coords(self, img_id):
@@ -148,66 +172,91 @@ class Tilemap:
 
 		return (int(img_id % tiles_x), int(img_id / tiles_x))
 
+	def get_tiles_in_block(self, pos):
+		x, y = pos
+		return self.map[y][x]
 
-	def move_view_up(self):
-		x_off, y_off = self.render_offset
-		y_off -= 1
-		self.render_offset = (x_off, y_off)
-
-	def move_view_down(self):
-		x_off, y_off = self.render_offset
-		y_off += 1
-		self.render_offset = (x_off, y_off)
-
-	def move_view_left(self):
-		x_off, y_off = self.render_offset
-		x_off -= 1
-		self.render_offset = (x_off, y_off)
-
-	def move_view_right(self):
-		x_off, y_off = self.render_offset
-		x_off += 1
-		self.render_offset = (x_off, y_off)
 
 pg.init()
 TILESIZE = 16
-NUM_TILES_X = 100
-NUM_TILES_Y = 100
+NUM_TILES_X = 50
+NUM_TILES_Y = 50
 tilemap_img = pg.image.load("tiles.png")
 disp = pg.display.set_mode((800, 600))
 
+cam = Camera((0, 0))
 
-tmap = Tilemap(NUM_TILES_X, NUM_TILES_Y, TILESIZE, tilemap_img)
+tmap = Tilemap(NUM_TILES_X, NUM_TILES_Y, TILESIZE, tilemap_img, cam)
 clk = pg.time.Clock()
 
-clk.tick()
-stop = False
-while True:
+pg.time.set_timer(USEREVENT+1, 100)
 
-	for ev in pg.event.get():
+p = Player((0, 0), tmap, True, cam)
+
+stop = False
+
+
+
+while True:
+	
+	event_queue = pg.event.get()
+	cam.update(event_queue)
+
+	for ev in event_queue:	
 		if ev.type == QUIT:
 			pg.quit()
 			sys.exit()
 		if ev.type == pg.KEYDOWN:
-			if ev.key == pg.K_UP:
-				tmap.move_view_up()
-			elif ev.key == pg.K_DOWN:
-				tmap.move_view_down()
-			elif ev.key == pg.K_LEFT:
-				tmap.move_view_left()
-			elif ev.key == pg.K_RIGHT:
-				tmap.move_view_right()
+			if ev.key == pg.K_SPACE:
+				clk.tick()
+				x, y = pg.mouse.get_pos()
+				path = astar.find_path(tmap, (0, 0), (int(x / TILESIZE), int(y / TILESIZE)), astar.direct_distance)
+				clk.tick()
+				print ("Time to find path:", clk.get_time())
+				for b in path:
+					x, y = b
+					tmap.map[y][x][0] = Tile.empty(b, 20)
+
+			'''
+		if ev.type == USEREVENT+1:
+			os.system("cls")
+			print("Elapsed time per frame:\t", clk.get_time())
+			print("Draw calls: \t", tmap.calls)
+			tmap.calls = 0
+			'''
+
+	pressed = pg.mouse.get_pressed()
+	if pressed[0]:
+		x, y = pg.mouse.get_pos()
+		x = int(x / TILESIZE)
+		y = int(y / TILESIZE)
+
+		tmap.map[y][x][0] = Tile.empty((x, y), 7)
+		tmap.map[y][x][0].is_obstacle = True
+	elif pressed[2]:
+		x, y = pg.mouse.get_pos()
+		x = int(x / TILESIZE)
+		y = int(y / TILESIZE)
+
+		tmap.map[y][x][0] = Tile.empty((x, y), 24)
+		tmap.map[y][x][0].is_obstacle = True
+
+	
+	dt = clk.get_time()
 
 
 	disp.fill((0, 0, 0))
+	
 
 	tmap.render_map(disp)
+	p.update(event_queue, dt)
+	p.render(disp)
 
 	pg.display.update()
 
 	clk.tick()
 
-	#print(clk.get_time())
+	
 
 
 

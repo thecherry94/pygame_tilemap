@@ -3,6 +3,7 @@ import sys
 import pygame as pg 
 from camera import Camera
 from player import Player
+from walker import Walker
 import astar
 
 from pygame.locals import *
@@ -139,8 +140,8 @@ class Tilemap:
 		x_off, y_off = tuple([self.tilesize * n for n in self.camera.get_pos()])
 		x_start = int(x_off / self.tilesize)
 		y_start = int(y_off / self.tilesize)
-		w, h = pg.display.get_surface().get_size()
-		x_end = x_start + int(w / self.tilesize)
+		w1, h = pg.display.get_surface().get_size()
+		x_end = x_start + int(w1 / self.tilesize)
 		y_end = y_start + int(h / self.tilesize)
 
 		if x_start < 0:
@@ -176,6 +177,15 @@ class Tilemap:
 		x, y = pos
 		return self.map[y][x]
 
+	def render_hovered_tile_marker(self, pos, surf, dt):
+		self.hover_opacity_counter += dt
+		if self.hover_opacity_counter >= 500:
+			self.hover_opacity_counter = 0
+
+		rect = pygame.Surface((TILESIZE, TILESIZE), pg.SRCALPHA, 32)
+		rect.fill((255, 0, 0, 150*(hover_opacity_counter/500)))
+		surf.blit(rect, pos)
+
 
 pg.init()
 TILESIZE = 16
@@ -191,7 +201,12 @@ clk = pg.time.Clock()
 
 pg.time.set_timer(USEREVENT+1, 100)
 
-p = Player((0, 0), tmap, True, cam)
+#p = Player((0, 0), tmap, True, cam)
+w1 = Walker((1, 0), tmap, 10)
+w2 = Walker((2, 0), tmap, 10)
+w3 = Walker((0, 0), tmap, 10)
+
+
 
 stop = False
 
@@ -208,14 +223,20 @@ while True:
 			sys.exit()
 		if ev.type == pg.KEYDOWN:
 			if ev.key == pg.K_SPACE:
-				clk.tick()
+				
 				x, y = pg.mouse.get_pos()
-				path = astar.find_path(tmap, (0, 0), (int(x / TILESIZE), int(y / TILESIZE)), astar.direct_distance)
-				clk.tick()
-				print ("Time to find path:", clk.get_time())
+				#clk.tick()
+				w1.move_to((int(x / TILESIZE), (int(y / TILESIZE))), True)
+				w2.move_to((int(x / TILESIZE)+1, (int(y / TILESIZE))), True)
+				w3.move_to((int(x / TILESIZE)-1, (int(y / TILESIZE))), True)
+				#clk.tick()
+				#print ("Time to find path:", clk.get_time())
+				'''
 				for b in path:
 					x, y = b
 					tmap.map[y][x][0] = Tile.empty(b, 20)
+				'''
+
 
 			'''
 		if ev.type == USEREVENT+1:
@@ -239,7 +260,7 @@ while True:
 		y = int(y / TILESIZE)
 
 		tmap.map[y][x][0] = Tile.empty((x, y), 24)
-		tmap.map[y][x][0].is_obstacle = True
+		tmap.map[y][x][0].is_obstacle = False
 
 	
 	dt = clk.get_time()
@@ -249,8 +270,15 @@ while True:
 	
 
 	tmap.render_map(disp)
-	p.update(event_queue, dt)
-	p.render(disp)
+
+	w1.update(dt)
+	w1.render(disp)
+
+	w2.update(dt)
+	w2.render(disp)
+
+	w3.update(dt)
+	w3.render(disp)
 
 	pg.display.update()
 

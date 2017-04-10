@@ -4,12 +4,13 @@ import math
 import pygame as pg 
 from pygame.locals import *
 
+def find_path(tmap, start_pos, goal_pos, heuristic, diagonal=False):
 
-
-def find_path(tmap, start_pos, goal_pos, heuristic):
 
 	x_bounds, y_bounds = tmap.num_tiles_x, tmap.num_tiles_y
 
+	scalar = 50
+	move = 0
 
 	closed_set = []
 	open_set = []
@@ -26,11 +27,13 @@ def find_path(tmap, start_pos, goal_pos, heuristic):
 
 
 	g_scores[start_pos] = 0
-	f_scores[start_pos] = heuristic(start_pos, goal_pos)
+	dijk_score = heuristic((0, 0), start_pos, goal_pos)
+	f_scores[start_pos] = dijk_score
 
 	open_set.append(start_pos)
 
 	while len(open_set) > 0:
+
 		current = lowest_score_node(open_set, f_scores)
 		if current == goal_pos:
 			return reconstruct_path(came_from, current)
@@ -39,7 +42,7 @@ def find_path(tmap, start_pos, goal_pos, heuristic):
 		open_set.remove(current)
 		closed_set.append(current)
 
-		neighbors = get_neighbors(current, (x_bounds, y_bounds))
+		neighbors = get_neighbors(current, (x_bounds, y_bounds), diagonal)
 		for neighbor in neighbors:
 			if neighbor in closed_set:
 				continue
@@ -52,8 +55,11 @@ def find_path(tmap, start_pos, goal_pos, heuristic):
 				continue
 
 			came_from[neighbor] = current
+
+
 			g_scores[neighbor] = tent_g_score
-			f_scores[neighbor] = heuristic(neighbor, goal_pos)
+			dijk_score += heuristic(current, start_pos, goal_pos)
+			f_scores[neighbor] = dijk_score
 
 	return []
 
@@ -68,13 +74,43 @@ def reconstruct_path(came_from, current):
 	return path
 
 
+class heuristics:
 
-def direct_distance(p1, p2):
-	x1, y1 = p1
-	x2, y2 = p2
-	return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+	def direct_distance(p1, p2, s=1):
+		x1, y1 = p1
+		x2, y2 = p2
+		return s * math.sqrt(abs((x2 - x1)**2 + (y2 - y1)**2))
+
+
+	def smarter_heuristic(p1, p2, move, scalar):
+		dist = heuristics.direct_distance(p1, p2)
+		if dist <= 0:
+			return 0
+
+		return  (5*move)/heuristics.direct_distance(p1, p2)
+
+	def steven_van_dijk(current_pos, start_pos, goal_pos):
+
+		cur_x, cur_y = current_pos
+		start_x, start_y = start_pos
+		goal_x, goal_y = goal_pos
+
+		dx1 = cur_x - goal_x
+		dy1 = cur_y - goal_y
+		dx2 = start_x - goal_x
+		dy2 = start_y - goal_y
+		cross = abs(dx1*dy2 - dx2*dy1)
+		return cross*0.001
+
+
+
+
+
+
+
 
 def lowest_score_node(l, scores):
+	
 	lowest_v = 100000
 	lowest_k = 100000
 	for k in l:
@@ -85,15 +121,8 @@ def lowest_score_node(l, scores):
 
 	return lowest_k
 
-	'''
-	lowest_v = list(scr.values())[0]
-	lowest_k = list(scr.keys())[0]
-	for key, val in scr.items():
-		if lowest_v > val:
-			lowest_v = val
-			lowest_k = key 
-	return lowest_k
-	'''
+
+
 
 def remove_by_pos(d, pos):
 	for k, v in d.items():
@@ -101,7 +130,7 @@ def remove_by_pos(d, pos):
 			del d[k]
 			return
 
-def get_neighbors(pos, bounds):
+def get_neighbors(pos, bounds, diagonal=False):
 	n = []
 	x, y = pos
 	x_max, y_max = bounds[0] - 1, bounds[1] - 1
@@ -119,17 +148,18 @@ def get_neighbors(pos, bounds):
 		n.append((x, y + 1))
 
 	
-	if x > 0 and y > 0:
-		n.append((x - 1, y - 1))
+	if diagonal:
+		if x > 0 and y > 0:
+			n.append((x - 1, y - 1))
 
-	if x > 0 and y < y_max:
-		n.append((x - 1, y + 1))
+		if x > 0 and y < y_max:
+			n.append((x - 1, y + 1))
 
-	if x < x_max and y > 0:
-		n.append((x + 1, y - 1))
+		if x < x_max and y > 0:
+			n.append((x + 1, y - 1))
 
-	if x < x_max and y < y_max:
-		n.append((x + 1, y + 1))
+		if x < x_max and y < y_max:
+			n.append((x + 1, y + 1))
 	
 
 	return n
